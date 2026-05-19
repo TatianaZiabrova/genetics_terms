@@ -21,6 +21,7 @@ async def show_term(update: Update, context: ContextTypes.DEFAULT_TYPE, user_inp
 
     context.user_data["current_term"] = term_key
     context.user_data["mnemonic_count"] = 0
+    context.user_data["previous_mnemonics"] = []
 
     # Если термина нет в базе — получаем определение от Клода
     if term_key not in TERMS:
@@ -47,8 +48,11 @@ async def send_card(message, context, term_key):
 
     if "mnemonic_image" not in term or count > 0:
         await message.reply_text("✨ Придумываю образ...")
-        mnemonic_text = await generate_mnemonic(term_key, definition)
+        previous = context.user_data.get("previous_mnemonics", [])
+        mnemonic_text = await generate_mnemonic(term_key, definition, previous)
         context.user_data["current_mnemonic"] = mnemonic_text
+        previous.append(mnemonic_text)
+        context.user_data["previous_mnemonics"] = previous
     else:
         context.user_data["current_mnemonic"] = (
             f"📝 *Расшифровка:*\n{term['mnemonic_letters']}\n\n"
@@ -69,7 +73,7 @@ async def send_card(message, context, term_key):
         f"📖 *Определение:*\n{definition}\n\n"
         f"{mnemonic}\n\n"
         f"💭 *Представь это ярко в голове!\n"
-        f"Прочитай определение ещё раз и запомни образ* 👆",
+        f"Прочитай определение ещё раз и запомни* 👆",
         parse_mode="Markdown",
         reply_markup=keyboard
     )
