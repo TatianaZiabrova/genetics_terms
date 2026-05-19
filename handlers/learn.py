@@ -1,7 +1,7 @@
 import json
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
-from services.claude_api import find_term_by_meaning, generate_mnemonic
+from services.claude_api import find_term_by_meaning, generate_mnemonic, get_definition
 
 with open("data/terms.json", "r", encoding="utf-8") as f:
     TERMS = json.load(f)
@@ -12,7 +12,7 @@ async def show_term(update: Update, context: ContextTypes.DEFAULT_TYPE, user_inp
 
     term_key = await find_term_by_meaning(user_input, list(TERMS.keys()))
 
-    if not term_key or term_key not in TERMS:
+    if not term_key:
         await update.message.reply_text(
             "🤔 Не нашла такой термин...\n"
             "Попробуй написать по-другому!"
@@ -22,17 +22,32 @@ async def show_term(update: Update, context: ContextTypes.DEFAULT_TYPE, user_inp
     context.user_data["current_term"] = term_key
     context.user_data["mnemonic_count"] = 0
 
+    # Если термина нет в базе — получаем определение от Клода
+    if term_key not in TERMS:
+        await update.message.reply_text("🧬 Нашла термин, ищу определение...")
+        definition = await get_definition(term_key)
+        context.user_data["current_definition"] = definition
+    else:
+        context.user_data["current_definition"] = None
+
     await send_card(update.message, context, term_key)
 
 
 async def send_card(message, context, term_key):
     """Отправляет карточку термина — принимает message напрямую"""
-    term = TERMS[term_key]
+    # Определение: из базы или от Клода
+    if term_key in TERMS:
+        term = TERMS[term_key]
+        definition = term["definition"]
+    else:
+        definition = context.user_data.get("current_definition", term_key)
+        term = {}
+
     count = context.user_data.get("mnemonic_count", 0)
 
     if "mnemonic_image" not in term or count > 0:
         await message.reply_text("✨ Придумываю образ...")
-        mnemonic_text = await generate_mnemonic(term_key, term["definition"])
+        mnemonic_text = await generate_mnemonic(term_key, definition)
         context.user_data["current_mnemonic"] = mnemonic_text
     else:
         context.user_data["current_mnemonic"] = (
@@ -51,7 +66,7 @@ async def send_card(message, context, term_key):
 
     await message.reply_text(
         f"🔤 *{term_key.upper()}*\n\n"
-        f"📖 *Определение:*\n{term['definition']}\n\n"
+        f"📖 *Определение:*\n{definition}\n\n"
         f"{mnemonic}\n\n"
         f"💭 *Представь это ярко в голове!\n"
         f"Прочитай определение ещё раз и запомни образ* 👆",
